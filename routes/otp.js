@@ -4,7 +4,6 @@ const transporter = require("../config/mail");
 
 const router = express.Router();
 
-// Generate 6-digit OTP
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -20,7 +19,12 @@ router.post("/send-email-otp", async (req, res) => {
   try {
     // Store OTP in Redis (5 min)
     await req.app.locals.redis.setex(`otp:${email}`, 300, hash);
+  } catch (err) {
+    console.error("Redis store OTP failed:", err.message);
+    return res.status(500).json({ message: "Failed to store OTP" });
+  }
 
+  try {
     // Send OTP via Gmail
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
@@ -28,11 +32,10 @@ router.post("/send-email-otp", async (req, res) => {
       subject: "Your verification code",
       text: `Your OTP is ${otp}. It will expire in 5 minutes.`,
     });
-
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
-    console.error("SEND OTP ERROR:", err.message);
-    res.status(500).json({ message: "Failed to send OTP" });
+    console.error("Gmail send OTP failed:", err.message);
+    res.status(500).json({ message: "Failed to send OTP via email" });
   }
 });
 
@@ -50,9 +53,7 @@ router.post("/verify-email-otp", async (req, res) => {
     const match = await bcrypt.compare(otp, storedHash);
     if (!match) return res.status(400).json({ message: "Invalid OTP" });
 
-    // Delete OTP after verification
     await req.app.locals.redis.del(`otp:${email}`);
-
     res.json({ message: "Email verified successfully" });
   } catch (err) {
     console.error("VERIFY OTP ERROR:", err.message);
