@@ -1,9 +1,8 @@
-// server.js
-require("dotenv").config(); // Load environment variables
+require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const otpRouter = require("./routes/otp"); // Import OTP routes
+const otpRouter = require("./routes/otp");
 const Redis = require("ioredis");
 
 const app = express();
@@ -11,29 +10,30 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // ----- REDIS SETUP -----
-const redis = new Redis({
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: process.env.REDIS_PORT || 6379,
-  password: process.env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: 20, // optional, default is 20
-});
+let redis;
+if (process.env.REDIS_URL) {
+  // Cloud Redis
+  redis = new Redis(process.env.REDIS_URL);
+} else {
+  // Local Redis fallback
+  redis = new Redis({
+    host: process.env.REDIS_HOST || "127.0.0.1",
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    maxRetriesPerRequest: 20,
+  });
+}
 
-// Handle Redis connection errors
-redis.on("connect", () => {
-  console.log("Connected to Redis successfully!");
-});
+// Redis event listeners
+redis.on("connect", () => console.log("Connected to Redis successfully!"));
+redis.on("error", (err) => console.error("Redis error:", err.message));
 
-redis.on("error", (err) => {
-  console.error("Redis error:", err.message);
-});
-
-// Make Redis accessible in routes via app.locals
+// Make Redis available in routes
 app.locals.redis = redis;
 
-// ----- USE ROUTES -----
+// ----- ROUTES -----
 app.use("/", otpRouter);
 
+// ----- START SERVER -----
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
